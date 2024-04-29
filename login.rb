@@ -10,13 +10,15 @@ require 'yaml'
 
 config = File.exist?('config.yml') ? YAML.load(File.read('config.yml')) : {}
 
-handle = ARGV[0]
-if handle.to_s.empty?
-  puts "Usage: #{$PROGRAM_NAME} <handle@server>"
+bsky_did = ARGV[0]
+masto_handle = ARGV[1]
+
+if bsky_did.to_s.empty? || masto_handle.to_s.empty?
+  puts "Usage: #{$PROGRAM_NAME} <did> <handle@server>"
   exit 1
 end
 
-server = handle.split('@').last
+server = masto_handle.split('@').last
 
 config['apps'] ||= {}
 config['users'] ||= {}
@@ -57,7 +59,7 @@ else
 end
 
 access_token = json['access_token']
-config['users'][handle] = { 'access_token' => access_token }
+config['users'][bsky_did] = { 'mastodon_handle' => masto_handle, 'access_token' => access_token }
 
 response = Net::HTTP.get_response(
   URI("https://#{server}/api/v1/accounts/verify_credentials"),
@@ -73,6 +75,6 @@ else
   exit 1
 end
 
-config['users'][handle]['user_id'] = json['id']
+config['users'][bsky_did]['user_id'] = json['id']
 
 File.write('config.yml', YAML.dump(config))
