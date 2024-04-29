@@ -74,16 +74,30 @@ class Server < Sinatra::Base
     [200, { "content-type" => "application/json; charset=utf-8" }, JSON.generate(feed: posts)]
   end
 
-  def convert_mastodon_post(json)
-    json = json['reblog'] || json
-    virtual_did = "did:mstdn:#{json['account']['id']}"
-    virtual_handle = json['account']['acct'].gsub('@', '.').gsub('_', '-').downcase
+  def make_virtual_did(mastodon_account)
+    "did:mstdn:#{mastodon_account['id']}"
+  end
+
+  def make_virtual_handle(mastodon_account)
+    virtual_handle = mastodon_account['acct'].gsub('@', '.').gsub('_', '-').downcase
 
     if virtual_handle !~ /\./
       virtual_handle += "." + @user_data['mastodon_handle'].split('@').last
     end
 
-    {
+    virtual_handle
+  end
+
+  def convert_mastodon_post(json)
+    if json['reblog']
+      reposter = json
+      json = json['reblog']
+    end
+
+    virtual_did = make_virtual_did(json['account'])
+    virtual_handle = make_virtual_handle(json['account'])
+
+    post_view = {
       post: {
         uri: "at://#{virtual_did}/app.bsky.feed.post/#{json['id']}",
         cid: "bafyreieg6naxuximr5hprhfb26z3mdpzvoztswo6pjrpbze7rngld4457y",
@@ -112,6 +126,29 @@ class Server < Sinatra::Base
         labels: []
       }
     }
+
+    if reposter
+      rt_virtual_did = make_virtual_did(reposter['account'])
+      rt_virtual_handle = make_virtual_handle(reposter['account'])
+
+      post_view[:reason] = {
+        '$type': "app.bsky.feed.defs#reasonRepost",
+        by: {
+          did: rt_virtual_did,
+          handle: rt_virtual_handle,
+          displayName: reposter['account']['display_name'],
+          avatar: reposter['account']['avatar_static'],
+          viewer: {
+            muted: false,
+            blockedBy: false
+          },
+          labels: []
+        },
+        indexedAt: reposter['created_at']
+      }
+    end
+
+    post_view
   end
 
   get "/xrpc/app.bsky.feed.getFeed" do
