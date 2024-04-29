@@ -9,6 +9,8 @@ require 'net/http'
 require 'uri'
 require 'yaml'
 
+OAUTH_SCOPES = 'read:statuses read:accounts write:statuses'
+
 config = File.exist?('config.yml') ? YAML.load(File.read('config.yml')) : {}
 
 bsky_did = ARGV[0]
@@ -26,7 +28,7 @@ config['users'] ||= {}
 
 unless config['apps'][server]
   client = Mastodon::REST::Client.new(base_url: "https://#{server}")
-  response = client.create_app('bluesky_mastodon_bridge', 'urn:ietf:wg:oauth:2.0:oob', 'read:statuses read:accounts')
+  response = client.create_app('bluesky_mastodon_bridge', 'urn:ietf:wg:oauth:2.0:oob', OAUTH_SCOPES)
 
   config['apps'][server] = { 'client_id' => response.client_id, 'client_secret' => response.client_secret }
 end
@@ -44,7 +46,7 @@ params = {
   client_id: config['apps'][server]['client_id'],
   client_secret: config['apps'][server]['client_secret'],
   grant_type: 'password',
-  scope: 'read:statuses read:accounts',
+  scope: OAUTH_SCOPES,
   username: email,
   password: password
 }

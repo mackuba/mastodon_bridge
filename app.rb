@@ -88,6 +88,15 @@ class Server < Sinatra::Base
     virtual_handle
   end
 
+  def mastodon_post_as_record(json)
+    {
+      '$type': "app.bsky.feed.post",
+      createdAt: json['created_at'],
+      langs: ['en'],
+      text: json['content'].gsub(/<.+?>/, '')[0...300]
+    }
+  end
+
   def convert_mastodon_post(json)
     if json['reblog']
       reposter = json
@@ -112,12 +121,7 @@ class Server < Sinatra::Base
           },
           labels: []
         },
-        record: {
-          '$type': "app.bsky.feed.post",
-          createdAt: json['created_at'],
-          langs: [json['language']].compact,
-          text: json['content'].gsub(/<.+?>/, '')[0...300]
-        },
+        record: mastodon_post_as_record(json),
         replyCount: json['replies_count'],
         repostCount: json['reblogs_count'],
         likeCount: json['favourites_count'],
@@ -151,6 +155,69 @@ class Server < Sinatra::Base
     post_view
   end
 
+  def get_mastodon_post(id)
+    access_token = @user_data['access_token']
+    server = @user_data['mastodon_handle'].split('@').last
+
+    response = Net::HTTP.get_response(
+      URI("https://#{server}/api/v1/statuses/#{id}"),
+      { 'Authorization' => "Bearer #{access_token}" }
+    )
+
+    if response.code.to_i != 200
+      raise "Invalid response: #{response.code} #{response.body}"
+    end
+
+    json = JSON.parse(response.body)
+    virtual_did = make_virtual_did(json['account'])
+
+    post_view = {
+      uri: "at://#{virtual_did}/app.bsky.feed.post/#{json['id']}",
+      cid: "bafyreieg6naxuximr5hprhfb26z3mdpzvoztswo6pjrpbze7rngld4457y",
+      value: mastodon_post_as_record(json)
+    }
+
+    [200, { "content-type" => "application/json; charset=utf-8" }, JSON.generate(post_view)]
+  end
+
+  def make_mastodon_reply(json)
+    parent_id = json['record']['reply']['parent']['uri'].split('/').last
+    text = json['record']['text']
+
+    access_token = @user_data['access_token']
+    server = @user_data['mastodon_handle'].split('@').last
+
+    url = URI("https://#{server}/api/v1/statuses")
+    post = Net::HTTP::Post.new(url, { 'Authorization' => "Bearer #{access_token}" })
+    post.content_type = 'application/json'
+    post.body = JSON.generate({
+      status: text,
+      in_reply_to_id: parent_id      
+    })
+
+    puts "[POST:URL] #{url}"
+    puts "[POST:HEADERS] #{post.each_header.inspect}"
+    puts "[POST:BODY] #{post.body.inspect}"
+
+    response = Net::HTTP.start(post.uri.hostname, post.uri.port, use_ssl: true) do |http|
+      http.request(post)
+    end
+
+    if response.code.to_i != 200
+      raise "Invalid response: #{response.code} #{response.body}"
+    end
+
+    puts "Mastodon response:"
+    puts response.body
+    json = JSON.parse(response.body)
+
+    virtual_did = make_virtual_did(json['account'])
+    at_uri = "at://#{virtual_did}/app.bsky.feed.post/#{json['id']}"
+    bsky_response = { uri: at_uri, cid: "bafyreieg6naxuximr5hprhfb26z3mdpzvoztswo6pjrpbze7rngld4457y" }
+
+    [200, { "content-type" => "application/json; charset=utf-8" }, JSON.generate(bsky_response)]
+  end
+
   get "/xrpc/app.bsky.feed.getFeed" do
     if params['feed'] == 'at://did:plc:oio4hkxaop4ao4wz2pp3f4cr/app.bsky.feed.generator/mastodon'
       if @user_data
@@ -159,6 +226,30 @@ class Server < Sinatra::Base
         halt 401
       end
     else
+      pass
+    end
+  end
+
+  get "/xrpc/com.atproto.repo.getRecord" do
+    if params['collection'] == 'app.bsky.feed.post' && params['repo'].start_with?('did:mstdn')
+      get_mastodon_post(params['rkey'])
+    else
+      pass
+    end
+  end
+
+  post "/xrpc/com.atproto.repo.createRecord" do
+    json = JSON.parse(request.body.read)
+
+    if json['collection'] == 'app.bsky.feed.post'
+      if json['record']['reply'] && json['record']['reply']['parent']['uri'].start_with?('at://did:mstdn')
+        make_mastodon_reply(json)
+      else
+        request.body.rewind
+        pass
+      end
+    else
+      request.body.rewind
       pass
     end
   end
