@@ -37,23 +37,27 @@ class Server < Sinatra::Base
 
   before do
     @config = File.exist?('config.yml') ? YAML.load(File.read('config.yml')) : { 'users' => {}}
+
+    @jwt_data = extract_jwt_data
+
+    if @jwt_data && @jwt_data['sub']
+      @user_data = @config['users'][@jwt_data['sub']]
+    end
   end
 
   get /.*/ do
     headers = extract_request_headers
 
-    if jwt_data = extract_jwt_data
-      puts "[GET:JWT_DATA] #{jwt_data['sub'].inspect}"
+    if @jwt_data
+      puts "[GET:JWT_DATA] #{@jwt_data['sub'].inspect}"
     else
       puts "[GET:JWT_DATA] <no data>"
     end
 
-    if jwt_data && jwt_data['sub']
-      if user_data = @config['users'][jwt_data['sub']]
-        endpoint = user_data['pds']
-      else
-        halt 401
-      end
+    if @jwt_data && @user_data
+      endpoint = @user_data['pds']
+    elsif @jwt_data
+      halt 401
     else
       endpoint = 'https://bsky.social'
     end
@@ -84,18 +88,16 @@ class Server < Sinatra::Base
     request_body = request.body.read
     content_type = request.content_type
 
-    if jwt_data = extract_jwt_data
-      puts "[POST:JWT_DATA] #{jwt_data['sub'].inspect}"
+    if @jwt_data
+      puts "[POST:JWT_DATA] #{@jwt_data['sub'].inspect}"
     else
       puts "[POST:JWT_DATA] <no data>"
     end
 
-    if jwt_data && jwt_data['sub']
-      if user_data = @config['users'][jwt_data['sub']]
-        endpoint = user_data['pds']
-      else
-        halt 401
-      end
+    if @jwt_data && @user_data
+      endpoint = @user_data['pds']
+    elsif @jwt_data
+      halt 401
     elsif request_body && content_type.start_with?('application/json') && (id = JSON.parse(request_body)['identifier'])
       if id =~ /.+@.+/
         endpoint = 'https://bsky.social'
