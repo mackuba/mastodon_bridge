@@ -3,6 +3,7 @@
 environment = ENV['RACK_ENV'] || 'development'
 
 require 'bundler/setup'
+require 'didkit'
 require 'net/http'
 require 'sinatra/base'
 require 'sinatra/reloader' if environment == 'development'
@@ -34,10 +35,12 @@ class Server < Sinatra::Base
     end
   end    
 
+  before do
+    @config = File.exist?('config.yml') ? YAML.load(File.read('config.yml')) : { 'users' => {}}
+  end
+
   get /.*/ do
     headers = extract_request_headers
-
-    url = "https://amanita.us-east.host.bsky.network" + request.fullpath
 
     if jwt_data = extract_jwt_data
       puts "[GET:JWT_DATA] #{jwt_data['sub'].inspect}"
@@ -45,8 +48,20 @@ class Server < Sinatra::Base
       puts "[GET:JWT_DATA] <no data>"
     end
 
-    get = Net::HTTP::Get.new(URI(url), headers)
+    if jwt_data && jwt_data['sub']
+      if user_data = @config['users'][jwt_data['sub']]
+        endpoint = user_data['pds']
+      else
+        halt 401
+      end
+    else
+      endpoint = 'https://bsky.social'
+    end
 
+    url = URI(endpoint + request.fullpath)
+    get = Net::HTTP::Get.new(url, headers)
+
+    puts "[GET:URL] #{url}"
     puts "[GET:REQ_HEADERS] #{headers.inspect}"
 
     response = Net::HTTP.start(get.uri.hostname, get.uri.port, use_ssl: true) do |http|
@@ -66,8 +81,8 @@ class Server < Sinatra::Base
 
   post /.*/ do
     headers = extract_request_headers
-
-    url = "https://amanita.us-east.host.bsky.network" + request.fullpath
+    request_body = request.body.read
+    content_type = request.content_type
 
     if jwt_data = extract_jwt_data
       puts "[POST:JWT_DATA] #{jwt_data['sub'].inspect}"
@@ -75,10 +90,30 @@ class Server < Sinatra::Base
       puts "[POST:JWT_DATA] <no data>"
     end
 
-    post = Net::HTTP::Post.new(URI(url), headers)
-    post.body = request.body.read
-    post.content_type = request.content_type
+    if jwt_data && jwt_data['sub']
+      if user_data = @config['users'][jwt_data['sub']]
+        endpoint = user_data['pds']
+      else
+        halt 401
+      end
+    elsif request_body && content_type.start_with?('application/json') && (id = JSON.parse(request_body)['identifier'])
+      if id =~ /.+@.+/
+        endpoint = 'https://bsky.social'
+      elsif id =~ /^did:/
+        endpoint = DID.new(id).get_document.pds_endpoint
+      else
+        endpoint = DID.resolve_handle(id).get_document.pds_endpoint
+      end
+    else
+      endpoint = 'https://bsky.social'
+    end
 
+    url = URI(endpoint + request.fullpath)
+    post = Net::HTTP::Post.new(url, headers)
+    post.body = request_body
+    post.content_type = content_type
+
+    puts "[POST:URL] #{url}"
     puts "[POST:REQ_HEADERS] #{headers.inspect}"
     puts "[POST:REQ_BODY] #{post.body.inspect}"
     puts "[POST:REQ_EACH] #{request.each_header.inspect}"
