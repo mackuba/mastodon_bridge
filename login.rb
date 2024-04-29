@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'bundler/setup'
+require 'didkit'
 require 'io/console'
 require 'json'
 require 'mastodon'
@@ -76,5 +77,8 @@ else
 end
 
 config['users'][bsky_did]['user_id'] = json['id']
+
+did_doc = DID.new(bsky_did).get_document
+config['users'][bsky_did]['pds'] = did_doc.pds_endpoint
 
 File.write('config.yml', YAML.dump(config))

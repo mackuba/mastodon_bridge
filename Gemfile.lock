@@ -15,6 +15,14 @@ GEM
       public_suffix (>= 2.0.2, < 6.0)
     buftok (0.3.0)
     daemons (1.4.1)
+    date (3.3.4)
+    didkit (0.2.2)
+      json (~> 2.5)
+      net-http (~> 0.1)
+      open-uri (~> 0.1)
+      resolv (~> 0.1)
+      time (~> 0.3)
+      uri (~> 0.13)
     domain_name (0.5.20190701)
       unf (>= 0.0.5, < 1.0.0)
     eventmachine (1.2.7)
@@ -32,15 +40,23 @@ GEM
     http-form_data (2.3.0)
     http-parser (1.2.3)
       ffi-compiler (>= 1.0, < 2.0)
+    json (2.7.2)
     multi_json (1.15.0)
     mustermann (2.0.2)
       ruby2_keywords (~> 0.0.1)
+    net-http (0.4.1)
+      uri
     oj (3.13.23)
+    open-uri (0.4.1)
+      stringio
+      time
+      uri
     public_suffix (5.0.1)
     rack (2.2.4)
     rack-protection (2.2.4)
       rack
     rake (13.0.6)
+    resolv (0.4.0)
     ruby2_keywords (0.0.5)
     sinatra (2.2.4)
       mustermann (~> 2.0)
@@ -55,20 +71,25 @@ GEM
       tilt (~> 2.0)
     sinatra-reloader (1.0)
       sinatra-contrib
+    stringio (3.1.0)
     thin (1.8.1)
       daemons (~> 1.0, >= 1.0.9)
       eventmachine (~> 1.0, >= 1.0.4)
       rack (>= 1, < 3)
     tilt (2.0.11)
+    time (0.3.0)
+      date
     unf (0.1.4)
       unf_ext
     unf_ext (0.0.8.2)
+    uri (0.13.0)
 
 PLATFORMS
   aarch64-linux
   arm64-darwin-21
 
 DEPENDENCIES
+  didkit (~> 0.2)
   mastodon-api!
   sinatra (~> 2.0)
   sinatra-reloader
