@@ -17,21 +17,32 @@ class Server < Sinatra::Base
     register Sinatra::Reloader
   end
 
-  get /.*/ do
-    headers = request.each_header
+  def extract_request_headers
+    request.each_header
       .select { |k, v| k.start_with?('HTTP_') }
       .map { |k, v| [k.gsub(/^HTTP_/, '').gsub(/_/, '-').downcase, v] }
       .reject { |k, v| k == 'host' || k == 'accept-encoding' }
       .then { |x| Hash[x] }
+  end
+
+  def extract_jwt_data
+    if auth = request.env['HTTP_AUTHORIZATION']
+      if auth.start_with?('Bearer ')
+        token = auth[7..-1]
+        JSON.parse(Base64.decode64(token.split('.')[1]))
+      end
+    end
+  end    
+
+  get /.*/ do
+    headers = extract_request_headers
 
     url = "https://amanita.us-east.host.bsky.network" + request.fullpath
 
-    if auth = headers['authorization']
-      if auth.start_with?('Bearer ')
-        token = auth[7..-1]
-        jwt_data = JSON.parse(Base64.decode64(token.split('.')[1]))
-        puts "[GET:JWT_DATA] #{jwt_data['sub'].inspect}"
-      end
+    if jwt_data = extract_jwt_data
+      puts "[GET:JWT_DATA] #{jwt_data['sub'].inspect}"
+    else
+      puts "[GET:JWT_DATA] <no data>"
     end
 
     get = Net::HTTP::Get.new(URI(url), headers)
@@ -54,20 +65,14 @@ class Server < Sinatra::Base
   end
 
   post /.*/ do
-    headers = request.each_header
-      .select { |k, v| k.start_with?('HTTP_') }
-      .map { |k, v| [k.gsub(/^HTTP_/, '').gsub(/_/, '-').downcase, v] }
-      .reject { |k, v| k == 'host' || k == 'accept-encoding' }
-      .then { |x| Hash[x] }
+    headers = extract_request_headers
 
     url = "https://amanita.us-east.host.bsky.network" + request.fullpath
 
-    if auth = headers['authorization']
-      if auth.start_with?('Bearer ')
-        token = auth[7..-1]
-        jwt_data = JSON.parse(Base64.decode64(token.split('.')[1]))
-        puts "[POST:JWT_DATA] #{jwt_data['sub'].inspect}"
-      end
+    if jwt_data = extract_jwt_data
+      puts "[POST:JWT_DATA] #{jwt_data['sub'].inspect}"
+    else
+      puts "[POST:JWT_DATA] <no data>"
     end
 
     post = Net::HTTP::Post.new(URI(url), headers)
