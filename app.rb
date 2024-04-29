@@ -79,6 +79,10 @@ class Server < Sinatra::Base
     virtual_did = "did:mstdn:#{json['account']['id']}"
     virtual_handle = json['account']['acct'].gsub('@', '.').gsub('_', '-').downcase
 
+    if virtual_handle !~ /\./
+      virtual_handle += "." + @user_data['mastodon_handle'].split('@').last
+    end
+
     {
       post: {
         uri: "at://#{virtual_did}/app.bsky.feed.post/#{json['id']}",
