@@ -52,8 +52,6 @@ class Server < Sinatra::Base
     query = {}
     query['limit'] = params['limit'] if params['limit']
 
-    query['limit'] = 20
-
     response = Net::HTTP.get_response(
       URI("https://#{server}/api/v1/timelines/home?" + URI.encode_www_form(query)),
       { 'Authorization' => "Bearer #{access_token}" }
