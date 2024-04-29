@@ -45,6 +45,83 @@ class Server < Sinatra::Base
     end
   end
 
+  def get_mastodon_timeline
+    access_token = @user_data['access_token']
+    server = @user_data['mastodon_handle'].split('@').last
+
+    query = {}
+    query['limit'] = params['limit'] if params['limit']
+
+    query['limit'] = 20
+
+    response = Net::HTTP.get_response(
+      URI("https://#{server}/api/v1/timelines/home?" + URI.encode_www_form(query)),
+      { 'Authorization' => "Bearer #{access_token}" }
+    )
+
+    if response.code.to_i != 200
+      raise "Invalid response: #{response.code} #{response.body}"
+    end
+
+    puts "Mastodon response:"
+    puts response.body
+    json = JSON.parse(response.body)
+    posts = json.map { |x| convert_mastodon_post(x) }
+
+    puts "Returning:"
+    puts JSON.generate(feed: posts)
+
+    [200, { "content-type" => "application/json; charset=utf-8" }, JSON.generate(feed: posts)]
+  end
+
+  def convert_mastodon_post(json)
+    json = json['reblog'] || json
+    virtual_did = "did:mstdn:#{json['account']['id']}"
+    virtual_handle = json['account']['acct'].gsub('@', '.').gsub('_', '-').downcase
+
+    {
+      post: {
+        uri: "at://#{virtual_did}/app.bsky.feed.post/#{json['id']}",
+        cid: "bafyreieg6naxuximr5hprhfb26z3mdpzvoztswo6pjrpbze7rngld4457y",
+        author: {
+          did: virtual_did,
+          handle: virtual_handle,
+          displayName: json['account']['display_name'],
+          avatar: json['account']['avatar_static'],
+          viewer: {
+            muted: false,
+            blockedBy: false
+          },
+          labels: []
+        },
+        record: {
+          '$type': "app.bsky.feed.post",
+          createdAt: json['created_at'],
+          langs: [json['language']].compact,
+          text: json['content'].gsub(/<.+?>/, '')[0...300]
+        },
+        replyCount: json['replies_count'],
+        repostCount: json['reblogs_count'],
+        likeCount: json['favourites_count'],
+        indexedAt: json['created_at'],
+        viewer: {},
+        labels: []
+      }
+    }
+  end
+
+  get "/xrpc/app.bsky.feed.getFeed" do
+    if params['feed'] == 'at://did:plc:oio4hkxaop4ao4wz2pp3f4cr/app.bsky.feed.generator/mastodon'
+      if @user_data
+        get_mastodon_timeline
+      else
+        halt 401
+      end
+    else
+      pass
+    end
+  end
+
   get /.*/ do
     headers = extract_request_headers
 
